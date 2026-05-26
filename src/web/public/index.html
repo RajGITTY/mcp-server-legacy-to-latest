@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AI Agent · MCP tool-use demo</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121933;
+    --panel-2: #182142;
+    --text: #e6ecff;
+    --muted: #8a96c8;
+    --accent: #7aa2ff;
+    --green: #7ee8a0;
+    --yellow: #ffd166;
+    --red: #ff6b6b;
+    --magenta: #d7a3ff;
+    --border: #25305e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 800px at 20% -10%, #1a2454 0%, var(--bg) 50%) fixed;
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 16px; letter-spacing: 0.4px; }
+  header h1 span { color: var(--accent); }
+  header .meta { font-size: 12px; color: var(--muted); }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+    height: calc(100vh - 57px);
+  }
+  aside {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    overflow-y: auto;
+  }
+  aside h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  aside .tool { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); margin-bottom: 6px; }
+  aside .tool b { color: var(--accent); }
+  aside .tool small { color: var(--muted); display: block; margin-top: 2px; }
+  aside .examples button {
+    width: 100%; text-align: left; background: transparent; color: var(--text);
+    border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px;
+    margin-bottom: 6px; cursor: pointer; font-size: 12px;
+  }
+  aside .examples button:hover { background: var(--panel-2); }
+  main { display: flex; flex-direction: column; min-width: 0; }
+  #timeline {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .event { margin-bottom: 10px; font-size: 13px; line-height: 1.5; }
+  .event .tag {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-right: 8px;
+    background: var(--panel-2);
+    color: var(--muted);
+  }
+  .event.user .tag { background: rgba(122,162,255,0.2); color: var(--accent); }
+  .event.step { color: var(--muted); font-size: 11px; padding-left: 4px; }
+  .event.assistant .tag { background: rgba(215,163,255,0.18); color: var(--magenta); }
+  .event.tool_call .tag { background: rgba(255,209,102,0.18); color: var(--yellow); }
+  .event.tool_result .tag { background: rgba(126,232,160,0.18); color: var(--green); }
+  .event.tool_result.err .tag { background: rgba(255,107,107,0.2); color: var(--red); }
+  .event.final .tag { background: rgba(126,232,160,0.25); color: var(--green); }
+  .event.error .tag { background: rgba(255,107,107,0.25); color: var(--red); }
+  pre.payload {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 4px 0 0 0;
+    font-size: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #cfd6ff;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    height: 64px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 14px;
+  }
+  textarea:focus { outline: 2px solid var(--accent); }
+  button.primary {
+    background: var(--accent);
+    color: #0b1020;
+    border: none;
+    padding: 0 18px;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 0 14px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>●</span> AI Agent &middot; MCP tool-use demo</h1>
+  <div class="meta" id="meta">connecting…</div>
+</header>
+
+<div class="layout">
+  <aside>
+    <h2>Try one</h2>
+    <div class="examples" id="examples"></div>
+    <h2 style="margin-top:14px">MCP tools</h2>
+    <div id="tools"></div>
+  </aside>
+
+  <main>
+    <div id="timeline"></div>
+    <form id="form">
+      <textarea id="prompt" placeholder="Ask the agent to explore, search, or modernize a file…"></textarea>
+      <button class="primary" id="send" type="submit">Send</button>
+      <button class="ghost" id="reset" type="button">Reset</button>
+    </form>
+  </main>
+</div>
+
+<script>
+const timeline = document.getElementById('timeline');
+const form = document.getElementById('form');
+const promptEl = document.getElementById('prompt');
+const sendBtn = document.getElementById('send');
+const resetBtn = document.getElementById('reset');
+const metaEl = document.getElementById('meta');
+const toolsEl = document.getElementById('tools');
+const examplesEl = document.getElementById('examples');
+
+const examples = [
+  "List the files in legacy/ and tell me what each one does.",
+  "Read legacy/legacy_sample.php and identify every security issue.",
+  "Search the project for SQL queries that concatenate user input.",
+  "Rewrite legacy/legacy_sample.php as modernized/SecureLogin.php using PDO + password_verify.",
+];
+
+examples.forEach(text => {
+  const b = document.createElement('button');
+  b.textContent = text;
+  b.onclick = () => { promptEl.value = text; promptEl.focus(); };
+  examplesEl.appendChild(b);
+});
+
+async function loadMeta() {
+  const r = await fetch('/api/meta').then(r => r.json());
+  metaEl.textContent = `provider: ${r.provider}  ·  ${r.tools.length} MCP tools`;
+  toolsEl.innerHTML = r.tools.map(t =>
+    `<div class="tool"><b>${escapeHtml(t.name)}</b><small>${escapeHtml(t.description || '')}</small></div>`
+  ).join('');
+}
+loadMeta();
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
+}
+
+function addEvent({ cls, tag, body, payload }) {
+  const el = document.createElement('div');
+  el.className = `event ${cls}`;
+  el.innerHTML = `<span class="tag">${tag}</span>${escapeHtml(body || '')}`;
+  if (payload) {
+    const pre = document.createElement('pre');
+    pre.className = 'payload';
+    pre.textContent = payload;
+    el.appendChild(pre);
+  }
+  timeline.appendChild(el);
+  timeline.scrollTop = timeline.scrollHeight;
+}
+
+resetBtn.onclick = async () => {
+  await fetch('/api/reset', { method: 'POST' });
+  timeline.innerHTML = '';
+  addEvent({ cls: 'step', tag: 'reset', body: 'history cleared' });
+};
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const prompt = promptEl.value.trim();
+  if (!prompt) return;
+  promptEl.value = '';
+  sendBtn.disabled = true;
+
+  addEvent({ cls: 'user', tag: 'user', body: prompt });
+
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+
+  // Parse SSE stream by hand - response.body is a ReadableStream of bytes.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const blocks = buf.split('\n\n');
+    buf = blocks.pop();
+    for (const block of blocks) handleSseBlock(block);
+  }
+  sendBtn.disabled = false;
+};
+
+function handleSseBlock(block) {
+  let event = 'message', data = '';
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event: ')) event = line.slice(7).trim();
+    else if (line.startsWith('data: ')) data += line.slice(6);
+  }
+  let parsed; try { parsed = JSON.parse(data); } catch { return; }
+
+  switch (event) {
+    case 'start': break;
+    case 'step':
+      addEvent({ cls: 'step', tag: `step ${parsed.step}/${parsed.maxSteps}`, body: '' });
+      break;
+    case 'assistant_text':
+      if (parsed.text?.trim()) addEvent({ cls: 'assistant', tag: 'assistant', body: parsed.text });
+      break;
+    case 'tool_call':
+      addEvent({ cls: 'tool_call', tag: `→ ${parsed.name}`, body: '', payload: JSON.stringify(parsed.args, null, 2) });
+      break;
+    case 'tool_result':
+      addEvent({
+        cls: 'tool_result' + (parsed.ok ? '' : ' err'),
+        tag: parsed.ok ? `✓ ${parsed.name}` : `✗ ${parsed.name}`,
+        body: '',
+        payload: parsed.content,
+      });
+      break;
+    case 'final':
+      addEvent({ cls: 'final', tag: '● final', body: parsed.text });
+      break;
+    case 'error':
+      addEvent({ cls: 'error', tag: '‼ error', body: parsed.message });
+      break;
+  }
+}
+</script>
+</body>
+</html>

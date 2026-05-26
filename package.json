@@ -1,0 +1,24 @@
+{
+  "name": "ai-agent-mcp-modernizer",
+  "version": "2.0.0",
+  "description": "Provider-agnostic AI agent that uses MCP tools to modernize legacy PHP into secure Node-style PHP. Ships with a CLI REPL and a streaming web UI.",
+  "type": "module",
+  "main": "src/cli/repl.js",
+  "scripts": {
+    "cli": "node src/cli/repl.js",
+    "web": "node src/web/server.js",
+    "demo": "node src/workflows/modernize-php.js",
+    "mcp": "node src/mcp/server.js"
+  },
+  "keywords": ["ai", "agent", "mcp", "model-context-protocol", "gemini", "openai", "react-loop", "tool-use"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "openai": "^4.77.0",
+    "zod": "^3.25.76"
+  }
+}
