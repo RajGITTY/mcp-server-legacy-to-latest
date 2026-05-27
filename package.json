@@ -8,7 +8,8 @@
     "cli": "node src/cli/repl.js",
     "web": "node src/web/server.js",
     "demo": "node src/workflows/modernize-php.js",
-    "mcp": "node src/mcp/server.js"
+    "mcp": "node src/mcp/server.js",
+    "test": "node --test"
   },
   "keywords": ["ai", "agent", "mcp", "model-context-protocol", "gemini", "openai", "react-loop", "tool-use"],
   "author": "",

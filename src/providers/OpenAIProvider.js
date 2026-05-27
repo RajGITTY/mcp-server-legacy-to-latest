@@ -28,6 +28,7 @@ export class OpenAIProvider {
       args: safeParse(tc.function.arguments),
     }));
 
+    const u = completion.usage ?? {};
     return {
       text: choice.content ?? "",
       toolCalls,
@@ -36,6 +37,7 @@ export class OpenAIProvider {
         content: choice.content ?? "",
         _openaiToolCalls: choice.tool_calls ?? [],
       },
+      usage: { inputTokens: u.prompt_tokens ?? 0, outputTokens: u.completion_tokens ?? 0 },
     };
   }
 }

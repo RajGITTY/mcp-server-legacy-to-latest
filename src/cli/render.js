@@ -35,9 +35,21 @@ export function renderEvent(ev) {
       console.log(`${color.yellow("→ tool")}  ${color.bold(ev.name)}  ${color.dim(truncate(args, 200))}`);
       break;
     }
+    case AgentEvent.ToolDenied:
+      console.log(`${color.red("⛔ denied")}  ${color.bold(ev.name)} ${color.dim("(blocked by approval policy)")}`);
+      break;
     case AgentEvent.ToolResult: {
       const tag = ev.ok ? color.green("✓ result") : color.red("✗ result");
       console.log(`${tag}  ${color.bold(ev.name)}\n${color.dim(truncate(ev.content, 600))}`);
+      break;
+    }
+    case AgentEvent.Usage: {
+      const cost = ev.costUsd != null ? ` · ~$${ev.costUsd.toFixed(5)}` : "";
+      console.log(
+        color.dim(
+          `\nⓘ ${ev.steps} steps · ${ev.toolCalls} tool calls · ${ev.totalTokens} tokens (in ${ev.inputTokens}/out ${ev.outputTokens})${cost}`
+        )
+      );
       break;
     }
     case AgentEvent.Final:

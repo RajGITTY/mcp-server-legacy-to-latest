@@ -54,6 +54,36 @@
   aside .tool { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); margin-bottom: 6px; }
   aside .tool b { color: var(--accent); }
   aside .tool small { color: var(--muted); display: block; margin-top: 2px; }
+  aside .clickable { cursor: pointer; border: 1px solid transparent; }
+  aside .clickable:hover { border-color: var(--accent); }
+  aside h2 .count { color: var(--accent); margin-left: 4px; }
+  .badges { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .badge {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border);
+  }
+  .badge.ro { color: var(--green); border-color: rgba(126,232,160,0.4); }
+  .badge.destructive { color: var(--red); border-color: rgba(255,107,107,0.4); }
+  .badge.idem { color: var(--muted); }
+  .badge.open { color: var(--yellow); border-color: rgba(255,209,102,0.4); }
+  /* Preview modal for resources / prompts */
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(5,8,20,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 10;
+  }
+  .modal-bg.open { display: flex; }
+  .modal {
+    width: min(820px, 90vw); max-height: 80vh; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .modal header { border-bottom: 1px solid var(--border); }
+  .modal .title { font-size: 13px; color: var(--accent); font-family: ui-monospace, monospace; }
+  .modal pre {
+    margin: 0; padding: 16px; overflow: auto; font-size: 12px; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-word; color: #cfd6ff;
+  }
+  .modal .close { background: transparent; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
   aside .examples button {
     width: 100%; text-align: left; background: transparent; color: var(--text);
     border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px;
@@ -148,8 +178,12 @@
   <aside>
     <h2>Try one</h2>
     <div class="examples" id="examples"></div>
-    <h2 style="margin-top:14px">MCP tools</h2>
+    <h2 style="margin-top:14px">Tools <span class="count" id="toolCount"></span></h2>
     <div id="tools"></div>
+    <h2 style="margin-top:14px">Resources <span class="count" id="resCount"></span></h2>
+    <div id="resources"></div>
+    <h2 style="margin-top:14px">Prompts <span class="count" id="promptCount"></span></h2>
+    <div id="prompts"></div>
   </aside>
 
   <main>
@@ -162,6 +196,16 @@
   </main>
 </div>
 
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <header>
+      <span class="title" id="modalTitle"></span>
+      <button class="close" id="modalClose">&times;</button>
+    </header>
+    <pre id="modalBody">loading…</pre>
+  </div>
+</div>
+
 <script>
 const timeline = document.getElementById('timeline');
 const form = document.getElementById('form');
@@ -170,13 +214,15 @@ const sendBtn = document.getElementById('send');
 const resetBtn = document.getElementById('reset');
 const metaEl = document.getElementById('meta');
 const toolsEl = document.getElementById('tools');
+const resourcesEl = document.getElementById('resources');
+const promptsEl = document.getElementById('prompts');
 const examplesEl = document.getElementById('examples');
 
 const examples = [
-  "List the files in legacy/ and tell me what each one does.",
-  "Read legacy/legacy_sample.php and identify every security issue.",
-  "Search the project for SQL queries that concatenate user input.",
-  "Rewrite legacy/legacy_sample.php as modernized/SecureLogin.php using PDO + password_verify.",
+  "Scan legacy/ for security vulnerabilities and summarize the findings by severity.",
+  "Find every .php file in the project, then read legacy/legacy_sample.php.",
+  "Modernize legacy/legacy_sample.php under modernized/, then run php_lint on the result.",
+  "Show me git status and the diff of everything you changed.",
 ];
 
 examples.forEach(text => {
@@ -186,14 +232,87 @@ examples.forEach(text => {
   examplesEl.appendChild(b);
 });
 
+// Map MCP tool annotations to compact badges.
+function badges(a = {}) {
+  const out = [];
+  if (a.readOnlyHint) out.push(['ro', 'read-only']);
+  if (a.destructiveHint) out.push(['destructive', 'destructive']);
+  if (a.idempotentHint) out.push(['idem', 'idempotent']);
+  if (a.openWorldHint) out.push(['open', 'open-world']);
+  if (!out.length) return '';
+  return `<div class="badges">${out.map(([c, l]) => `<span class="badge ${c}">${l}</span>`).join('')}</div>`;
+}
+
 async function loadMeta() {
   const r = await fetch('/api/meta').then(r => r.json());
-  metaEl.textContent = `provider: ${r.provider}  ·  ${r.tools.length} MCP tools`;
+  metaEl.textContent = `provider: ${r.provider}  ·  ${r.tools.length} tools · ${r.resources.length} resources · ${r.prompts.length} prompts`;
+  document.getElementById('toolCount').textContent = r.tools.length;
+  document.getElementById('resCount').textContent = r.resources.length;
+  document.getElementById('promptCount').textContent = r.prompts.length;
+
   toolsEl.innerHTML = r.tools.map(t =>
-    `<div class="tool"><b>${escapeHtml(t.name)}</b><small>${escapeHtml(t.description || '')}</small></div>`
+    `<div class="tool"><b>${escapeHtml(t.name)}</b><small>${escapeHtml(t.description || '')}</small>${badges(t.annotations)}</div>`
   ).join('');
+
+  resourcesEl.innerHTML = r.resources.map(res =>
+    `<div class="tool clickable" data-uri="${escapeHtml(res.uri)}" data-template="${res.template ? 1 : 0}">
+       <b>${escapeHtml(res.name || res.uri)}</b><small>${escapeHtml(res.uri)}</small></div>`
+  ).join('') || '<small style="color:var(--muted)">none</small>';
+
+  promptsEl.innerHTML = r.prompts.map(p =>
+    `<div class="tool clickable" data-prompt="${escapeHtml(p.name)}" data-args='${escapeHtml(JSON.stringify(p.arguments || []))}'>
+       <b>${escapeHtml(p.name)}</b><small>${escapeHtml(p.description || '')}</small></div>`
+  ).join('') || '<small style="color:var(--muted)">none</small>';
+
+  resourcesEl.querySelectorAll('.clickable').forEach(el => {
+    el.onclick = () => previewResource(el.dataset.uri, el.dataset.template === '1');
+  });
+  promptsEl.querySelectorAll('.clickable').forEach(el => {
+    el.onclick = () => previewPrompt(el.dataset.prompt, JSON.parse(el.dataset.args));
+  });
 }
 loadMeta();
+
+// ---- Preview modal --------------------------------------------------------
+const modalBg = document.getElementById('modalBg');
+const modalTitle = document.getElementById('modalTitle');
+const modalBody = document.getElementById('modalBody');
+document.getElementById('modalClose').onclick = () => modalBg.classList.remove('open');
+modalBg.onclick = (e) => { if (e.target === modalBg) modalBg.classList.remove('open'); };
+
+function openModal(title) {
+  modalTitle.textContent = title;
+  modalBody.textContent = 'loading…';
+  modalBg.classList.add('open');
+}
+
+async function previewResource(uri, isTemplate) {
+  // Templated resources need a concrete path; ask for one.
+  if (isTemplate) {
+    const path = prompt('Path to read, e.g. src/agent/Agent.js');
+    if (!path) return;
+    uri = uri.replace(/\{[^}]+\}/, encodeURIComponent(path));
+  }
+  openModal(uri);
+  try {
+    const r = await fetch('/api/resource?uri=' + encodeURIComponent(uri)).then(r => r.json());
+    modalBody.textContent = r.text ?? r.error ?? '(empty)';
+  } catch (e) { modalBody.textContent = String(e); }
+}
+
+async function previewPrompt(name, argSpec) {
+  const args = {};
+  for (const a of argSpec) {
+    const v = prompt(`Argument "${a.name}"${a.description ? ' — ' + a.description : ''}`, '');
+    if (v === null) return;
+    args[a.name] = v;
+  }
+  openModal('prompt: ' + name);
+  try {
+    const r = await fetch('/api/prompt?name=' + encodeURIComponent(name) + '&args=' + encodeURIComponent(JSON.stringify(args))).then(r => r.json());
+    modalBody.textContent = r.text ?? r.error ?? '(empty)';
+  } catch (e) { modalBody.textContent = String(e); }
+}
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
@@ -268,6 +387,9 @@ function handleSseBlock(block) {
     case 'tool_call':
       addEvent({ cls: 'tool_call', tag: `→ ${parsed.name}`, body: '', payload: JSON.stringify(parsed.args, null, 2) });
       break;
+    case 'tool_denied':
+      addEvent({ cls: 'tool_result err', tag: `⛔ ${parsed.name}`, body: 'blocked by approval policy' });
+      break;
     case 'tool_result':
       addEvent({
         cls: 'tool_result' + (parsed.ok ? '' : ' err'),
@@ -276,6 +398,11 @@ function handleSseBlock(block) {
         payload: parsed.content,
       });
       break;
+    case 'usage': {
+      const cost = parsed.costUsd != null ? ` · ~$${parsed.costUsd.toFixed(5)}` : '';
+      addEvent({ cls: 'step', tag: 'usage', body: `${parsed.steps} steps · ${parsed.toolCalls} tool calls · ${parsed.totalTokens} tokens (in ${parsed.inputTokens}/out ${parsed.outputTokens})${cost}` });
+      break;
+    }
     case 'final':
       addEvent({ cls: 'final', tag: '● final', body: parsed.text });
       break;

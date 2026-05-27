@@ -33,6 +33,7 @@ export class GeminiProvider {
     if (text) parts.push({ text });
     for (const c of calls) parts.push({ functionCall: { name: c.name, args: c.args ?? {} } });
 
+    const u = response.usageMetadata ?? {};
     return {
       text,
       toolCalls: calls.map((c, i) => ({
@@ -41,6 +42,7 @@ export class GeminiProvider {
         args: c.args ?? {},
       })),
       assistantMessage: { role: "assistant", content: text, _geminiParts: parts },
+      usage: { inputTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0 },
     };
   }
 }

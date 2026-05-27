@@ -30,13 +30,49 @@ async function init() {
 app.get("/api/meta", (_req, res) => {
   res.json({
     provider: provider?.name ?? "(initializing)",
-    tools: mcp?.tools.map((t) => ({ name: t.name, description: t.description })) ?? [],
+    tools: mcp?.tools.map((t) => ({ name: t.name, description: t.description, annotations: t.annotations })) ?? [],
+    resources: [
+      ...(mcp?.resources?.map((r) => ({ uri: r.uri, name: r.name, description: r.description })) ?? []),
+      ...(mcp?.resourceTemplates?.map((t) => ({
+        uri: t.uriTemplate,
+        name: t.name,
+        description: t.description,
+        template: true,
+      })) ?? []),
+    ],
+    prompts:
+      mcp?.prompts?.map((p) => ({
+        name: p.name,
+        description: p.description,
+        arguments: p.arguments ?? [],
+      })) ?? [],
   });
 });
 
 app.post("/api/reset", (_req, res) => {
   agent?.reset();
   res.json({ ok: true });
+});
+
+// Read an MCP resource by URI (for the sidebar preview).
+app.get("/api/resource", async (req, res) => {
+  try {
+    const text = await mcp.readResource(String(req.query.uri ?? ""));
+    res.json({ text });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Render an MCP prompt template (arguments passed as JSON query params).
+app.get("/api/prompt", async (req, res) => {
+  try {
+    const args = req.query.args ? JSON.parse(String(req.query.args)) : {};
+    const text = await mcp.getPrompt(String(req.query.name ?? ""), args);
+    res.json({ text });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // Server-Sent Events: stream every agent event as it happens so the UI can
